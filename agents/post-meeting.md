@@ -14,6 +14,7 @@ The routing table is already loaded per SKILL.md Step 1.
 | Create Asana tasks | `Asana:create_tasks` |
 | Search Asana projects | `Asana:search_objects` with `resource_type: "project"` |
 | Search Asana tasks (duplicate check) | `Asana:search_tasks` with `text` param |
+| List a project's sections | `Asana:get_project` with `include_sections: true` |
 | My Tasks (Aaron's personal list) | `Asana:create_tasks` with `default_assignee: "me"`, no `default_project` |
 | Upload .docx to Drive | `Google Drive:create_file` with `base64Content`, `contentMimeType`, `disableConversionToGoogleType: true` |
 | Download xlsx/docx from Drive | `Google Drive:download_file_content` — returns raw base64 for non-Google files |
@@ -188,6 +189,27 @@ If a matching open task already exists, note it in the summary and skip creation
 - Call `Asana:search_objects` with `resource_type: "user"` and the person's name to find their user GID
 - Set `assignee` to their GID on the task; set the same `project_id` as Aaron's task if it's the same project
 
+### 4c-2 — Resolve the "BACKLOG: New Items" Section
+
+Every new account task (any task with a `project_id`, i.e. not a My Tasks item) goes into that
+project's **"BACKLOG: New Items"** section. Resolve the section GID once per account, per run:
+
+1. Check memory for a control containing `asana_section_new_items [AccountName]`.
+2. If found: use that GID directly, no lookup needed.
+3. If not found: call `Asana:get_project` with the account's `project_id` and
+   `include_sections: true`. Match a section named "BACKLOG: New Items" (case-insensitive,
+   trim whitespace).
+4. If a match is found: cache it immediately —
+   `memory_user_edits(command="add", control="asana_section_new_items [AccountName]: [GID]")` —
+   then use it for this run and all future runs for that account.
+5. If no match is found: there is no tool available to create an Asana section
+   programmatically. Tell Aaron the project has no "BACKLOG: New Items" section, ask him to
+   create it once in Asana, and in the meantime create the tasks without a `section_id`
+   (falling back to prior behavior) so nothing is blocked.
+
+This step does not apply to Aaron's personal My Tasks items — those have no project and no
+section by this name.
+
 ### 4d — Create Tasks
 
 Call `Asana:create_tasks` with an array of task objects:
@@ -199,6 +221,8 @@ assignee: "me" for Aaron, user GID for others
 due_on: YYYY-MM-DD if stated; omit if not
 notes: "[Meeting Name] | [Date]\n[verbatim action item text from transcript]"
 project_id: the resolved account GID (omit for My Tasks)
+section_id: the resolved "BACKLOG: New Items" section GID (omit for My Tasks, or if no
+  matching section exists per Step 4c-2)
 ```
 
 ### 4e — Task Summary
